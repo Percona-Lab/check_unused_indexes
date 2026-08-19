@@ -39,7 +39,7 @@ user=your_db_user
 password=your_db_password
 ```
 
-Usage1.
+### Usage1.
 
 1. Simple Single Host / Direct Replica CLI
 Pass your primary instance directly via the CLI:
