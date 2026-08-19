@@ -61,14 +61,14 @@ db-replica-2=10.0.0.12:3306
 db-analytics=10.0.0.13:3306
 ```
 
-Run the script specifying your primary node alias from the file:
+3. Run the script specifying your primary node alias from the file:
 
 ```Bash
 python3 check_unused_indexes.py \
   --inventory inventory.txt \
   --primary db-primary
 ```
-5. Targeting Specific Schemas or TablesRestrict checks to particular databases or tables:
+4. Targeting Specific Schemas or TablesRestrict checks to particular databases or tables:
 
 ```Bash
 python3 check_unused_indexes.py \
