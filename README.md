@@ -27,8 +27,9 @@ Dropping an index based on statistics from a single instance is dangerous: an in
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/arunjitha/check_unused_indexes.git
+   git clone https://github.com/Percona-Lab/check_unused_indexes.git
    cd check_unused_indexes
+   ```
 
 2. Configure your MySQL credentials in ~/.my.cnf:
 
