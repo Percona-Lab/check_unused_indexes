@@ -27,29 +27,59 @@ Dropping an index based on statistics from a single instance is dangerous: an in
 
 1. Clone the repository:
    ```bash
-   git clone [https://github.com/arunjitha/check_unused_indexes.git](https://github.com/arunjitha/check_unused_indexes.git)
+   git clone https://github.com/arunjitha/check_unused_indexes.git
    cd check_unused_indexes
 
-Install pymysql:Bashpip3 install pymysql
-Configure your MySQL credentials in ~/.my.cnf:Ini, TOML[client]
+2. Configure your MySQL credentials in ~/.my.cnf:
+
+```
+Ini, TOML
+[client]
 user=your_db_user
 password=your_db_password
-Usage1. Simple Single Host / Direct Replica CLIPass your primary instance directly via the CLI:Bashpython3 check_unused_indexes.py \
+```
+
+Usage1.
+
+1. Simple Single Host / Direct Replica CLI
+Pass your primary instance directly via the CLI:
+
+``` Bash
+python3 check_unused_indexes.py \
   --primary "primary=10.0.0.1:3306" \
   --replicas "repl1=10.0.0.2:3306,repl2=10.0.0.3:3306"
-2. Using an Inventory File (Recommended for Large Topologies)Create an inventory.txt mapping file:Ini, TOML# inventory.txt
+```
+
+2. Using an Inventory File (Recommended for Large Topologies)Create an inventory.txt mapping file:
+
+```Ini, TOML
+
+# inventory.txt
 db-primary=10.0.0.10:3306
 db-replica-1=10.0.0.11:3306
 db-replica-2=10.0.0.12:3306
 db-analytics=10.0.0.13:3306
-Run the script specifying your primary node alias from the file:Bashpython3 check_unused_indexes.py \
+```
+
+Run the script specifying your primary node alias from the file:
+
+```Bash
+python3 check_unused_indexes.py \
   --inventory inventory.txt \
   --primary db-primary
-3. Targeting Specific Schemas or TablesRestrict checks to particular databases or tables:Bashpython3 check_unused_indexes.py \
+```
+5. Targeting Specific Schemas or TablesRestrict checks to particular databases or tables:
+
+```Bash
+python3 check_unused_indexes.py \
   --primary "10.0.0.1:3306" \
   --include-schema "production_db,orders_db" \
   --include-table "users,orders"
-Command Line ArgumentsArgumentShortDescriptionDefault--primary-p[Required] Primary alias or spec (alias=ip:port or ip:port)None--replicas-rComma-separated list of replica specsNone--inventory-iPath to an inventory file (alias=ip:port)None--config-cPath to MySQL option config file~/.my.cnf--min-uptime-uMinimum required node uptime in days (0 to disable)7.0--actionDDL statement type to generate: invisible, drop, bothinvisible--include-schema-sComma-separated target schemas (e.g., db1,db2)All non-ignored--include-table-tComma-separated target tables (e.g., users,orders)All tables--ignore-schemaComma-separated schemas to excludesys,mysql,performance_schema,information_schema--quiet-summary-qsSuppress the formatted summary table; output DDL onlyFalse--colorColor mode: auto, always, neverautoWorkflow & Output ExampleStep 1: Topology Discovery — Resolves all downstream relationships and cluster members.Step 2: Individual Node Audit — Queries sys.schema_unused_indexes on every server and checks uptime.Step 3: Intersect & Generate DDL — Finds indexes present in every node's unused list and builds safe DDL.Plaintext=== Step 1: Discovering Topology ===
+```
+
+
+Step 1: Discovering Topology ===
+
 Mapping topology downstream from Primary: db-primary...
 Resolved Topology (3 nodes): db-primary, db-replica-1, db-replica-2
 
