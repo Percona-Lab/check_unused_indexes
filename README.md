@@ -76,10 +76,42 @@ python3 check_unused_indexes.py \
   --include-table "users,orders"
 ```
 
+### Command Line Arguments
+```
+usage: check_unused_indexes.py [-h] -p PRIMARY [-r REPLICAS] [-i INVENTORY] [-c CONFIG] [-u MIN_UPTIME_DAYS] [--action {invisible,drop,both}] [--color {auto,always,never}]
+                               [--ignore-schema IGNORE_SCHEMA] [-s INCLUDE_SCHEMA] [-t INCLUDE_TABLE] [-qs]
 
-Step 1: Discovering Topology ===
+Verify unused indexes across primary, all topology replicas (including Aurora Readers), and Galera/PXC cluster nodes.
+
+options:
+  -h, --help            show this help message and exit
+  -p PRIMARY, --primary PRIMARY
+                        Primary instance alias (if using --inventory) or connection spec 'alias=10.0.0.1:3306' / '10.0.0.1:3306'
+  -r REPLICAS, --replicas REPLICAS
+                        Comma-separated replica connection specs (e.g. 'repl1=10.0.0.2:3306,10.0.0.3:3306')
+  -i INVENTORY, --inventory INVENTORY
+                        Path to inventory text file containing node mappings (format: alias=ip:port)
+  -c CONFIG, --config CONFIG
+                        Path to MySQL config file
+  -u MIN_UPTIME_DAYS, --min-uptime MIN_UPTIME_DAYS
+                        Minimum uptime threshold in days to avoid warnings (default: 7, set 0 to disable)
+  --action {invisible,drop,both}
+                        Generated DDL action: 'invisible' (safest), 'drop', or 'both' (default: invisible)
+  --color {auto,always,never}
+                        Color output mode
+  --ignore-schema IGNORE_SCHEMA
+                        Comma-separated schemas to ignore
+  -s INCLUDE_SCHEMA, --include-schema INCLUDE_SCHEMA, --schema INCLUDE_SCHEMA
+                        Comma-separated schemas/databases to explicitly target (e.g., db1,db2)
+  -t INCLUDE_TABLE, --include-table INCLUDE_TABLE, --table INCLUDE_TABLE
+                        Comma-separated tables to explicitly target (e.g., users,orders)
+  -qs, --quiet-summary  Suppress the Step 3 visual table output and show only DDL statements
 
 ```
+### Sample Output
+```
+Step 1: Discovering Topology ===
+
 Mapping topology downstream from Primary: db-primary...
 Resolved Topology (3 nodes): db-primary, db-replica-1, db-replica-2
 
