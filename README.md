@@ -33,7 +33,6 @@ Dropping an index based on statistics from a single instance is dangerous: an in
 2. Configure your MySQL credentials in ~/.my.cnf:
 
 ```
-Ini, TOML
 [client]
 user=your_db_user
 password=your_db_password
