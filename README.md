@@ -80,6 +80,7 @@ python3 check_unused_indexes.py \
 
 Step 1: Discovering Topology ===
 
+```
 Mapping topology downstream from Primary: db-primary...
 Resolved Topology (3 nodes): db-primary, db-replica-1, db-replica-2
 
@@ -108,6 +109,7 @@ Generated DDL Statements (Execute on Primary):
 ALTER TABLE `app_db`.`users` ALTER INDEX `idx_created_at` INVISIBLE;
 ALTER TABLE `app_db`.`orders` ALTER INDEX `idx_legacy_status` INVISIBLE;
 --------------------------------------------------------------------------------
+```
 Safety RecommendationsAlways use ALTER INDEX ... INVISIBLE first. Mark indexes as invisible for a few days to ensure no unexpected queries degrade in performance before dropping them permanently.Verify Uptime. MySQL resets index statistics upon service restart. Ensure all servers have been running long enough to capture peak application workload cycles (e.g., weekly batch jobs).
 
 
