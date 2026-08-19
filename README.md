@@ -76,6 +76,30 @@ python3 check_unused_indexes.py \
   --include-table "users,orders"
 ```
 
+### 5. Running Against AWS Aurora Clusters (Writer & Readers)
+
+When running against AWS Aurora clusters, ensure your primary alias forms the prefix of your reader aliases (e.g., `--primary "aurora=..."` and `--replicas "aurora-reader1=..."`). This allows the script's auto-discovery logic to seamlessly group all cluster endpoints together:
+
+#### Option A: Command Line Syntax
+```bash
+python3 check_unused_indexes.py \
+  --primary "aurora=prod-db-cluster.cluster-xyz123456789.us-east-1.rds.amazonaws.com:3306" \
+  --replicas "aurora-reader-1=prod-db-cluster.cluster-ro-xyz123456789.us-east-1.rds.amazonaws.com:3306,aurora-reader-2=prod-db-instance-2.xyz123456789.us-east-1.rds.amazonaws.com:3306"
+```
+#### Option B: Inventory File Syntax (inventory.txt)
+```
+# inventory.txt
+aurora=prod-db-cluster.cluster-xyz123456789.us-east-1.rds.amazonaws.com:3306
+aurora-reader-1=prod-db-cluster.cluster-ro-xyz123456789.us-east-1.rds.amazonaws.com:3306
+aurora-reader-2=prod-db-instance-2.xyz123456789.us-east-1.rds.amazonaws.com:3306
+``` 
+Run with inventory:
+```
+python3 check_unused_indexes.py \
+  --inventory inventory.txt \
+  --primary aurora
+```
+
 ### Command Line Arguments
 ```
 usage: check_unused_indexes.py [-h] -p PRIMARY [-r REPLICAS] [-i INVENTORY] [-c CONFIG] [-u MIN_UPTIME_DAYS] [--action {invisible,drop,both}] [--color {auto,always,never}]
