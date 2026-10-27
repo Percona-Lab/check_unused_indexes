@@ -104,7 +104,7 @@ python3 check_unused_indexes.py \
 ### Command Line Arguments
 ```
 usage: check_unused_indexes.py [-h] -p PRIMARY [-r REPLICAS] [-i INVENTORY] [-c CONFIG] [-u MIN_UPTIME_DAYS] [--action {invisible,drop,both}] [--color {auto,always,never}]
-                               [--ignore-schema IGNORE_SCHEMA] [-s INCLUDE_SCHEMA] [-t INCLUDE_TABLE] [-qs]
+                               [--ignore-schema IGNORE_SCHEMA] [-s INCLUDE_SCHEMA] [-t INCLUDE_TABLE] [-qs] [--pause-seconds PAUSE_SECONDS] [--force]
 
 Verify unused indexes across primary, all topology replicas (including Aurora Readers), and Galera/PXC cluster nodes.
 
@@ -125,14 +125,19 @@ options:
   --color {auto,always,never}
                         Color output mode
   --ignore-schema IGNORE_SCHEMA
-                        Comma-separated schemas to ignore
+                        Additional comma-separated schemas to ignore (system schemas are always ignored)
   -s INCLUDE_SCHEMA, --include-schema INCLUDE_SCHEMA, --schema INCLUDE_SCHEMA
                         Comma-separated schemas/databases to explicitly target (e.g., db1,db2)
   -t INCLUDE_TABLE, --include-table INCLUDE_TABLE, --table INCLUDE_TABLE
                         Comma-separated tables to explicitly target (e.g., users,orders)
   -qs, --quiet-summary  Suppress the Step 3 visual table output and show only DDL statements
+  --pause-seconds PAUSE_SECONDS
+                        Optional delay in seconds between Step 1 and Step 2 for testing node failures
+  --force               Ignore replica connection failures during Step 2 and proceed with partial intersection (unsafe)
 
 ```
+**Connection safety:** the script aborts if the Primary cannot be reached in Step 1 or Step 2, and aborts if any resolved replica/cluster peer fails during index inspection (Step 2), because a safe intersection requires data from every node. Use `--force` to proceed with the remaining reachable nodes (unsafe). System schemas (`sys`, `mysql`, `performance_schema`, `information_schema`) are always ignored; `--ignore-schema` adds more.
+
 ### Sample Output
 ```
 Step 1: Discovering Topology ===

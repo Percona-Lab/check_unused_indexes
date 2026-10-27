@@ -25,6 +25,7 @@ import argparse
 import logging
 import os
 import sys
+import time
 from typing import Dict, List, Optional, Set, Tuple
 
 import pymysql
@@ -251,9 +252,10 @@ def get_unused_indexes(
 
 def resolve_topology_downstream(
     primary_alias: str, inventory_map: dict, cnf_path: str
-) -> dict:
+) -> Tuple[dict, List[Tuple[str, str, int]]]:
     """Inspect all inventory servers and traverse downstream replication, Aurora clusters, + Galera/PXC clusters."""
     server_details = {}
+    failed_nodes = []
 
     for alias, (ip, port) in inventory_map.items():
         conn = connect_mysql(ip, port, cnf_path)
@@ -271,6 +273,8 @@ def resolve_topology_downstream(
                 "is_aurora": meta["is_aurora"],
                 "aurora_nodes": meta["aurora_nodes"],
             }
+        else:
+            failed_nodes.append((alias, ip, port))
 
     # Match Replication Parents
     for alias, info in server_details.items():
@@ -323,7 +327,7 @@ def resolve_topology_downstream(
                     _dfs_downstream(candidate_alias)
 
     _dfs_downstream(primary_alias)
-    return resolved_topology
+    return resolved_topology, failed_nodes
 
 
 def main():
@@ -373,8 +377,8 @@ def main():
     )
     parser.add_argument(
         "--ignore-schema",
-        default="sys,mysql,performance_schema,information_schema",
-        help="Comma-separated schemas to ignore",
+        default="",
+        help="Additional comma-separated schemas to ignore (system schemas are always ignored)",
     )
     parser.add_argument(
         "-s",
@@ -396,12 +400,49 @@ def main():
         action="store_true",
         help="Suppress the Step 3 visual table output and show only DDL statements",
     )
+    parser.add_argument(
+        "--pause-seconds",
+        type=int,
+        default=0,
+        help="Optional delay in seconds between Step 1 and Step 2 for testing node failures",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Ignore replica connection failures during Step 2 and proceed with partial intersection (unsafe)",
+    )
     args = parser.parse_args()
 
     Color.configure(args.color)
-    ignored_schemas = set(args.ignore_schema.split(",")) if args.ignore_schema else set()
-    include_schemas = set(args.include_schema.split(",")) if args.include_schema else None
-    include_tables = set(args.include_table.split(",")) if args.include_table else None
+
+    # Hardcoded internal system schemas
+    default_system_schemas = {
+        "sys",
+        "mysql",
+        "performance_schema",
+        "information_schema",
+    }
+
+    # Parse additional user-specified ignored schemas
+    user_ignored = (
+        set(s.strip() for s in args.ignore_schema.split(",") if s.strip())
+        if args.ignore_schema
+        else set()
+    )
+
+    # Merge both sets
+    ignored_schemas = default_system_schemas.union(user_ignored)
+
+    include_schemas = (
+        set(s.strip() for s in args.include_schema.split(",") if s.strip())
+        if args.include_schema
+        else None
+    )
+    include_tables = (
+        set(t.strip() for t in args.include_table.split(",") if t.strip())
+        if args.include_table
+        else None
+    )
     recommended_uptime_sec = args.min_uptime_days * 86400
 
     inventory_map: Dict[str, Tuple[str, int]] = {}
@@ -435,9 +476,36 @@ def main():
         f"\n{Color.BOLD}{Color.CYAN}=== Step 1: Discovering Topology ==={Color.RESET}"
     )
     print(f"Mapping topology downstream from Primary: {Color.BOLD}{primary_alias}{Color.RESET}...")
-    nodes = resolve_topology_downstream(primary_alias, inventory_map, args.config)
+    nodes, failed_nodes = resolve_topology_downstream(primary_alias, inventory_map, args.config)
 
-    print(f"\nResolved Topology ({len(nodes)} nodes): {', '.join(nodes.keys())}")
+    print(f"\nResolved Topology ({len(nodes)} nodes): {', '.join(nodes.keys()) if nodes else 'None'}")
+
+    # GUARDRAIL: Abort if Primary failed to connect during Step 1
+    if primary_alias not in nodes:
+        print(
+            f"\n{Color.BOLD}{Color.RED}FATAL ERROR: Primary instance '{primary_alias}' failed to connect during Step 1 topology resolution.{Color.RESET}"
+        )
+        print(
+            f"{Color.RED}Aborting. Cannot resolve downstream topology without a reachable Primary.{Color.RESET}\n"
+        )
+        sys.exit(1)
+
+    if args.pause_seconds > 0:
+        print(f"Pausing for {args.pause_seconds} seconds before proceeding to Step 2...")
+        time.sleep(args.pause_seconds)
+
+    if failed_nodes:
+        print(f"\n{Color.BOLD}{Color.RED}⚠️  CONNECTION WARNING:{Color.RESET}")
+        print(
+            f"{Color.YELLOW}The following inventory node(s) failed to connect during topology discovery "
+            f"and were excluded from evaluation:{Color.RESET}"
+        )
+        for alias, ip, port in failed_nodes:
+            print(f"  - Node '{alias}' ({ip}:{port})")
+        print(
+            f"{Color.YELLOW}Note: Safe index verification requires checking ALL nodes in a topology. "
+            f"Dropping indexes based on incomplete data risks breaking queries on unreachable nodes.{Color.RESET}"
+        )
 
     print(
         f"\n{Color.BOLD}{Color.CYAN}=== Step 2: Checking Unused Indexes on Nodes ==={Color.RESET}"
@@ -445,6 +513,7 @@ def main():
 
     node_unused_indexes: Dict[str, Set[Tuple[str, str, str]]] = {}
     uptime_warnings = []
+    step2_failed_nodes = []
 
     for alias, info in nodes.items():
         role_label = (
@@ -474,6 +543,43 @@ def main():
             node_unused_indexes[alias] = unused
             print(f"  └─ Found {len(unused)} unused index candidates on this node.")
             conn.close()
+        else:
+            step2_failed_nodes.append(alias)
+            # Immediate abort if Primary fails during Step 2
+            if alias == primary_alias:
+                print(
+                    f"\n{Color.BOLD}{Color.RED}FATAL ERROR: Could not connect to Primary node '{primary_alias}' during Step 2.{Color.RESET}"
+                )
+                print(
+                    f"{Color.RED}Aborting. Cannot determine index intersection without Primary index state.{Color.RESET}\n"
+                )
+                sys.exit(1)
+
+    # STRICT FAIL-SAFE: Abort if any replica failed during Step 2 (unless --force is supplied)
+    if step2_failed_nodes:
+        if not args.force:
+            print(
+                f"\n{Color.BOLD}{Color.RED}FATAL ERROR: Failed to inspect index state on resolved replica/peer node(s):{Color.RESET}"
+            )
+            for alias in step2_failed_nodes:
+                print(f"  - Node '{alias}'")
+            print(
+                f"\n{Color.RED}Aborting. Verifying safe index drops requires candidate evaluation across ALL nodes in the topology.{Color.RESET}"
+            )
+            print(
+                f"{Color.YELLOW}If you wish to force evaluation on remaining online nodes, re-run with --force.{Color.RESET}\n"
+            )
+            sys.exit(1)
+        else:
+            print(f"\n{Color.BOLD}{Color.RED}⚠️  STEP 2 CONNECTION WARNING (--force enabled):{Color.RESET}")
+            print(
+                f"{Color.YELLOW}The following node(s) connected during topology discovery but failed during index inspection:{Color.RESET}"
+            )
+            for alias in step2_failed_nodes:
+                print(f"  - Node '{alias}'")
+            print(
+                f"{Color.YELLOW}Caution: Intersection was calculated excluding these unreachable nodes.{Color.RESET}"
+            )
 
     if uptime_warnings:
         print(
@@ -484,11 +590,7 @@ def main():
                 f"  - Node '{alias}' has been up for only {days} days. Index usage statistics might be incomplete."
             )
 
-    if not node_unused_indexes:
-        print(f"\n{Color.RED}No nodes were successfully checked.{Color.RESET}")
-        sys.exit(1)
-
-    primary_unused = node_unused_indexes.get(primary_alias, set())
+    primary_unused = node_unused_indexes[primary_alias]
     candidates = set(primary_unused)
 
     for alias, unused_set in node_unused_indexes.items():
@@ -506,7 +608,7 @@ def main():
             f"\n{Color.BOLD}{Color.CYAN}=== Step 3: Intersecting Unused Indexes Across Topology ==={Color.RESET}"
         )
         print(
-            f"\n{Color.BOLD}Safe Target Indexes (Unused across ALL {len(node_unused_indexes)} nodes):{Color.RESET}"
+            f"\n{Color.BOLD}Safe Target Indexes (Unused across ALL {len(node_unused_indexes)} checked nodes):{Color.RESET}"
         )
         print("=" * 80)
         print(f"{'SCHEMA':<20} | {'TABLE':<30} | {'INDEX NAME':<25}")
